@@ -23,6 +23,11 @@ impl SpeakerChannel {
     /// Get samples for the next frame,
     /// if no samples are buffered silence (None) will be returned
     pub fn next_samples(&mut self, next_pts: i64) -> Option<Vec<i16>> {
-        None
+        if let Some(frame) = self.frames.pop_front() {
+            self.pts = next_pts;
+            Some(frame.data)
+        } else {
+            None
+        }
     }
 }
