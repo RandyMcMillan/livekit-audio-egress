@@ -48,7 +48,6 @@ impl Egress {
                     if let RemoteTrack::Audio(audio_track) = track {
                         info!("{} became speaker in {}", px.identity(), &self.room);
                         tokio::spawn(Self::record_track(audio_track, dtx.clone()));
-                        break;
                     }
                 }
                 _ => {}

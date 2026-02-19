@@ -78,7 +78,7 @@ impl Mixer {
     fn mix(&mut self) -> Result<(), Error> {
         let mut speaking = Vec::new();
         let min_samples = unsafe { (*self.encoder.codec_context()).frame_size as i64 };
-        let mut out_samples: Vec<i16> = Vec::with_capacity(min_samples as usize);
+        let mut out_samples: Vec<i16> = vec![0i16; min_samples as usize];
         let next_pts = self.pts + min_samples;
         if next_pts < self.delay {
             // wait for more data before starting mixer
@@ -94,12 +94,13 @@ impl Mixer {
             return Ok(());
         }
 
-        let x = 0;
+        let weight = 1f32 / speaking.len() as f32;
+        let mut x = 0usize;
         while x < out_samples.len() {
-            let weight = 1f32 / speaking.len() as f32;
             for speaker in &mut speaking {
-                out_samples[x] += (speaker[x] as f32 * weight) as i16;
+                out_samples[x] = out_samples[x].saturating_add((speaker[x] as f32 * weight) as i16);
             }
+            x += 1;
         }
 
         self.encode_frame(out_samples, next_pts)
