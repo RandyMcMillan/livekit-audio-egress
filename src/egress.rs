@@ -4,7 +4,7 @@ use livekit::prelude::{RemoteAudioTrack, RemoteTrack};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::native::audio_resampler;
 use livekit::{Room, RoomEvent, RoomOptions};
-use log::info;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
@@ -34,8 +34,11 @@ impl Egress {
 
         let (dtx, drx) = unbounded_channel();
         let mut mixer = Mixer::new(room.name(), drx)?;
-        tokio::task::spawn_blocking(move || {
-            mixer.run().expect("Mixer failed");
+        tokio::task::spawn_blocking(move || loop {
+            if let Err(e) = mixer.run() {
+                warn!("Mixer stopped: {}", e);
+                break;
+            }
         });
 
         while let Some(msg) = rx.recv().await {

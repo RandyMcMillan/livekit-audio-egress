@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Error, Result};
+use anyhow::{anyhow, Error, Result};
 use ffmpeg_rs_raw::ffmpeg_sys_the_third::AVCodecID::{AV_CODEC_ID_AAC, AV_CODEC_ID_AAC_LATM};
 use ffmpeg_rs_raw::ffmpeg_sys_the_third::AVSampleFormat::AV_SAMPLE_FMT_S16;
 use ffmpeg_rs_raw::ffmpeg_sys_the_third::{av_frame_alloc, av_packet_free, avcodec_find_encoder_by_name};
@@ -62,6 +62,20 @@ impl Mixer {
     }
 
     pub fn run(&mut self) -> Result<(), Error> {
+        // Block until at least one sample arrives, avoiding busy-spinning
+        let first = match self.chan_in.blocking_recv() {
+            Some(s) => s,
+            None => return Err(anyhow!("Mixer channel closed")),
+        };
+        if let Some(speaker) = self.speakers.get_mut(&first.sid) {
+            speaker.put(first);
+        } else {
+            let sid = first.sid.clone();
+            let mut new_speaker = SpeakerChannel::new(sid.clone());
+            new_speaker.put(first);
+            self.speakers.insert(sid, new_speaker);
+        }
+        // Drain any additional buffered samples
         while let Ok(samples) = self.chan_in.try_recv() {
             if let Some(speaker) = self.speakers.get_mut(&samples.sid) {
                 speaker.put(samples);
@@ -97,12 +111,15 @@ impl Mixer {
         let weight = 1f32 / speaking.len() as f32;
         let mut x = 0usize;
         while x < out_samples.len() {
-            for speaker in &mut speaking {
-                out_samples[x] = out_samples[x].saturating_add((speaker[x] as f32 * weight) as i16);
+            for speaker in &speaking {
+                if x < speaker.len() {
+                    out_samples[x] = out_samples[x].saturating_add((speaker[x] as f32 * weight) as i16);
+                }
             }
             x += 1;
         }
 
+        self.pts = next_pts;
         self.encode_frame(out_samples, next_pts)
     }
 
