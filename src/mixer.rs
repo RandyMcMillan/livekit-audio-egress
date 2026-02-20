@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Error, Result};
-use ffmpeg_rs_raw::ffmpeg_sys_the_third::AVCodecID::{AV_CODEC_ID_AAC, AV_CODEC_ID_AAC_LATM};
+use anyhow::{anyhow, Context, Error, Result};
+use ffmpeg_rs_raw::ffmpeg_sys_the_third::AVCodecID::AV_CODEC_ID_AAC;
 use ffmpeg_rs_raw::ffmpeg_sys_the_third::AVSampleFormat::AV_SAMPLE_FMT_S16;
-use ffmpeg_rs_raw::ffmpeg_sys_the_third::{av_frame_alloc, av_packet_free, avcodec_find_encoder_by_name};
-use ffmpeg_rs_raw::{cstr, Encoder, Muxer};
+use ffmpeg_rs_raw::ffmpeg_sys_the_third::{av_frame_alloc, av_packet_free};
+use ffmpeg_rs_raw::{Encoder, Muxer};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::speaker::SpeakerChannel;
@@ -31,14 +31,14 @@ pub struct MixerData {
 impl Mixer {
     pub fn new(id: String, rx: UnboundedReceiver<MixerData>) -> Result<Self> {
         let encoder = unsafe {
-            // TODO: this isnt working
-            let codec = avcodec_find_encoder_by_name(cstr!("libfdk_aac"));
             Encoder::new(AV_CODEC_ID_AAC)?
                 .with_default_channel_layout(NB_CHANNELS as i32)
                 .with_sample_rate(SAMPLE_RATE as i32)
                 .with_sample_format(AV_SAMPLE_FMT_S16)
                 .open(None)?
         };
+        std::fs::create_dir_all(&id)
+            .with_context(|| format!("Failed to create output directory: {}", id))?;
         let muxer = unsafe {
             let mut opt = HashMap::new();
             opt.insert("hls_flags".to_string(), "delete_segments".to_string());
